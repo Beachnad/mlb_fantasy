@@ -1,0 +1,9 @@
+pybaseball
+numpy
+pandas
+scipy
+scikit-learn
+luigi
+matplotlib
+beautifulsoup4
+mechanize
