@@ -3,6 +3,8 @@ library(lpSolve)
 
 # HELPER FUNCTIONS =============================================
 
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
 #' Adds columns to a data frame
 #' 
 #' Given a datafram and column names, will add those columns to
@@ -101,7 +103,7 @@ opt_lineup <- function(players){
     left_join(select(player_scores, player, score), by='player')
 }
 
-opt_lineup(my_lineup)
+opt_lineup(my_roster)
 
 
 for(p in sample(player_scores$player, 10)){
@@ -134,15 +136,51 @@ eval_roster(my_roster)
 #' 0's indicating: 1 = playing, 0 = not playing.
 sim_schedule <- function(gp=162){
   shift = sample(0:5, 1)
-  play = ceiling(seq(shift, 157 + shift, length.out = gp))
+  if (gp <= 60) {play <- ceiling(seq(shift, 157 + shift, length.out = gp))}
+  else{play = ceiling(seq(1, 162, length.out = gp))}
+  
   s <- rep(1, 187)
-  s[sample(1:187, 25)] <- 0
+  s[spaced_sample(1:187, 25, k=4)] <- 0
   x <- rep(0, 187)
   x[which(s==1)[play]] <- 1
   x
 }
 
+sim_schedule(140)
 
+
+
+
+
+#' Randomly Sample Elements Spaced Apart
+#' 
+#' Given a list of numbers, the number to sample, and spacing
+#' between samples -> returns a sampled list
+#' 
+#' @param x List of elements to sample from
+#' @param n Number of elements to sample
+#' @param k Spacing between samples
+#' @param reset Boolean, whether or not to reset x when 
+#'   If FALSE, will throw an error when x is exhausted and another sample is needed.
+#' @return Spaced samples from x
+#' @examples
+#' spaced_sample(1:100, 5, 5)
+#' spaced_sample(1:100, 5, 25)           # will throw error
+#' spaced_sample(1:100, 5, 25, reset=T)  # will reset x when exhausted
+spaced_sample <- function(x=1:100, n=5, k=2, reset=F){
+  arr <- c()
+  orig.x <- x
+  for(i in 1:n){
+    if(length(x) == 0 & reset){x <- orig.x}
+    r = sample(x, 1)
+    x <- x[abs(x-r)>k]
+    arr <- c(r, arr)
+  }
+  arr
+}
+
+
+spaced_sample(1:100, 10, 25, reset=T)
 
 #' Simulate if a player plays a given game during the week (7 days)
 #' 
