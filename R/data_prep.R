@@ -50,3 +50,19 @@ get_data <- function(){
 }
 
 players <- get_data()
+
+vorp <- players %>%
+  separate_rows(pos, sep=',') %>%
+  group_by(pos) %>% 
+  arrange(desc(score)) %>%
+  mutate(vor = score - score[case_when(
+    pos %in% c('OF', 'SP') ~ 3 * 12 + 12,
+    pos %in% c('RP')       ~ 2 * 12 + 6,
+    T                      ~ 1 * 12 + 3
+  )],
+    pos_rank = row_number()
+  ) %>%
+  ungroup() %>%
+  arrange(desc(vor)) %>%
+  mutate(ovr_rank = row_number()) %>%
+  select(player, pos, vor, pos_rank, ovr_rank, score)
