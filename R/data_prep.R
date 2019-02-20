@@ -49,9 +49,23 @@ get_data <- function(){
   players <- players[,c(1, 2, 9, 8, 3:7, 10:14)]
 }
 
-players <- get_data()
+player_data <- get_data()
 
-vorp <- players %>%
+replacement_player_data <- player_data %>%
+  separate_rows(pos, sep=',') %>%
+  group_by(pos) %>% 
+  arrange(desc(score)) %>%
+  filter(abs(row_number() - case_when(
+    pos %in% c('OF', 'SP') ~ 3 * 12 + 12,
+    pos %in% c('RP')       ~ 2 * 12 + 6,
+    T                      ~ 1 * 12 + 3
+  ))<=4) %>%
+  gather('stat','value', -player,-pos) %>%
+  group_by(pos, stat) %>%
+  summarise(value=mean(value)) %>%
+  spread(stat, value)
+
+vorp <- player_data %>%
   separate_rows(pos, sep=',') %>%
   group_by(pos) %>% 
   arrange(desc(score)) %>%

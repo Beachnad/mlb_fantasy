@@ -34,11 +34,11 @@ my_roster <- c(
 )
 
 opt_lineup <- function(players){
-  roster <- filter(player_scores, player %in% players) %>%
+  roster <- filter(player_data, player %in% players) %>%
     separate_rows(pos, sep=',') %>%
-    left_join(select(VORP, player, pos, vorp), by=c('player', 'pos')) %>%
+    left_join(select(vorp, player, pos, vor), by=c('player', 'pos')) %>%
     group_by(pos) %>%
-    mutate(rank=dense_rank(desc(vorp))) %>%
+    mutate(rank=dense_rank(desc(vor))) %>%
     ungroup() %>%
     select(player, score, pos)
   
@@ -100,7 +100,7 @@ opt_lineup <- function(players){
       pos = 'BN',
       pos_num = 1:length(bench)
     )) %>%
-    left_join(select(player_scores, player, score), by='player')
+    left_join(select(player_data, player, score), by='player')
 }
 
 opt_lineup(my_roster)
