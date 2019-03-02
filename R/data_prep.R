@@ -11,8 +11,7 @@ batting_stats <- c('R', 'HR', 'SB', 'RBI', 'AVG')
 
 get_data <- function(){
   pred_p <- read.csv('./data/external/yahoo_pred_pitchers.csv', stringsAsFactors = F, fileEncoding="UTF-8-BOM") %>%
-    filter(player != 'Shohei Ohtani (Pitcher)',
-           row_number() <= 180) %>%
+    filter(player != 'Shohei Ohtani (Pitcher)' & row_number() <= 180) %>%
     dplyr::rename(ownership = 1) %>%
     select(player, pos, pitching_stats, GP) %>%
     gather('stat', 'value', -player, -pos, -GP) %>%
@@ -87,8 +86,8 @@ full_rep <-
 
 
 player_data.rep <- bind_rows(
-  select(player_data, player, pos, score, GP),
-  transmute(replacement_player_data, player=paste0('(', pos, ') Replacement'), score=score, GP=GP, pos=pos)
+  select(player_data, -raw_score),
+  mutate(replacement_player_data, player=paste0('(', pos, ') Replacement'))
  ) 
 # %>%
 #   bind_rows(
@@ -118,5 +117,19 @@ vorp <- player_data %>%
   ungroup() %>%
   mutate(ovr_rank = row_number()) %>%
   select(player, pos, vor, pos_rank, ovr_rank, score)
+
+
+vorp.rep <- player_data.rep %>%
+  separate_rows(pos, sep=',') %>%
+  select(player, pos, score, GP) %>%
+  bind_rows(replacement_player_data) %>%
+  left_join(select(replacement_player_data, pos, score), by='pos', suffix=c('', '.rep')) %>%
+  mutate(vor = score - score.rep) %>%
+  arrange(desc(vor)) %>%
+  group_by(pos) %>%
+  mutate(pos_rank = row_number()) %>%
+  ungroup() %>%
+  mutate(ovr_rank = row_number()) %>%
+  select(player, pos, vor, pos_rank, ovr_rank, score, GP)
 
 

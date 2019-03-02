@@ -66,3 +66,57 @@ sim_weeks <- function(n_sims = 100, p_game=0.95, p_full_wk=0.0642){
     wk <- ifelse(f0 & f1, 1, 0)
   })
 }
+
+#' Generates a permutation-probability matrix.
+#' 
+#' Given a list of probabilities that a binary event occurs,
+#' will return a matrix of possible permutations, and the
+#' probability of that permutaions.
+#' 
+#' @param prob List of probability values between 0 and 1
+#' @return matrix of permutations and associated probability of occuring
+#' @examples
+#' perm_prob_mat(rep(0.5, 3))
+#' 
+#' 
+prob <- c(0.25, 0.5, 0.75)
+perm_prob_mat <- function(prob, min_cases = 0){
+  perms <- permutations(2,length(prob),0:1,repeats.allowed=TRUE)
+  perms <- perms[which(apply(perms, 1, sum) >= min_cases),]
+  probs <- matrix(rep(prob, nrow(perms)), ncol=length(prob), byrow=T)
+  x <- ifelse(perms==1,probs,1-probs)
+  x_probs <- apply(x, 1, prod)
+  mat <- cbind(perms, x_probs)
+  colnames(mat) <- c(prob, 'prob')
+  mat
+}
+
+# seq(1, 0.50, length.out=6)
+# x <- perm_prob_mat(seq(1, 0.55, length.out=7))
+# x_sorted <- x[sort(x[,'prob'], decreasing=T, index.return=T)$ix,]
+# x_filtered <- x_sorted[,1:7]
+# colnames(x_filtered) <- NULL
+# 
+# 
+# 
+# permutations(2,3,c(1, 0),repeats.allowed=TRUE)
+# 
+# matrix(3, 1, 1)
+# 
+# permutations
+# 
+# event_probs <- c(0.9, 0.65, 0.2)
+# 
+# most_probable_events <- function(event_probs){
+#   rev_probs <- event_probs < 0.5
+#   x_probs <- ifelse(rev_probs, 1-event_probs, event_probs)
+#   sorted_ind <- sort(x_probs, decreasing = T, index.return=T)
+#   x_probs <- x_probs[sorted_ind$ix]
+#   
+#   perms <- permutations(2,length(x_probs),c(1, 0),repeats.allowed=TRUE)
+#   perms <- perms[sort(apply(perm))
+# }
+# 
+# 
+# 
+# perm_prob_mat(sample(c(0.25, 0.5, 0.75), 23, replace=T), min_cases = 10)

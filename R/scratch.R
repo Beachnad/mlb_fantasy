@@ -454,19 +454,175 @@ rescale(rnorm(10), c(50, 100))
 library(lpSolve)
 lp()
 
+162  # games
+187  # days in the season
+
+32 / 187
+
+GP <- c(32, 30, 31, 60, 70, 65, 145, 150, 152, 132, 120, 132)
+
+(GP / 187) > runif(length(GP))
+
+
+
+sim_fun <- function(n=100, players){
+  df <- filter(player_data, player %in% players) %>%
+    select(player, GP)
+  
+  
+  
+}
+
+
+
+opt_lineup <- function(players, fill_replacements=T){
+  roster <- filter(player_data.rep, player %in% players) %>%
+    separate_rows(pos, sep=',') %>%
+    left_join(select(vorp, player, pos, vor), by=c('player', 'pos')) %>%
+    group_by(pos) %>%
+    mutate(rank=dense_rank(desc(vor))) %>%
+    ungroup() %>%
+    select(player, vor, pos, score)
+  
+  
+  df <- roster %>%
+    mutate(
+      label = paste(player, pos, sep=' - '),
+      one=1
+    ) %>%
+    spread(key=pos, value=one, fill=0) %>%
+    add_columns(positions, 0) %>%
+    mutate(one=1) %>%
+    spread(key=player, value=one, fill=0)
+  
+  objective.in <- df$score
+  
+  const.mat <- df %>%
+    select(-label, -vor, -score) %>%
+    data.matrix() %>% t()
+  
+  const.rhs <- case_when(
+    grepl('Replacement', row.names(const.mat))~99,
+    row.names(const.mat)%in%c('1B', '2B', '3B', 'SS', 'C', 'Util')~1,
+    row.names(const.mat)=='RP'~2,
+    row.names(const.mat)%in%c('OF', 'SP')~3,
+    row.names(const.mat)=='P'~3,
+    T~1
+  )
+  
+  const.dir <- rep('<=', length(const.rhs))
+  
+  sol <- lp(direction = "max", 
+            objective.in, # maximize objective function
+            const.mat, const.dir, const.rhs,   # constraints
+            all.int=T)
+  
+  starters <- tibble(player=df$label[sol$solution>=1],
+                     cnt=sol$solution[sol$solution>=1])
+  starters <- starters[rep(row.names(starters), starters$cnt), 1] %>%
+    separate(player, sep=' - ', into=c('player', 'pos')) %>%
+    group_by(pos) %>%
+    mutate(pos_num=1:n()) %>%
+    ungroup()
+  
+  lineup <- tibble(
+    pos = c('C', '1B', '2B', '3B', 'SS',
+            'OF', 'OF', 'OF', 'Util', 
+            'SP', 'SP', 'SP', 'RP', 'RP',
+            'P', 'P', 'P')
+  ) %>%
+    group_by(pos) %>%
+    mutate(pos_num = 1:n()) %>%
+    ungroup() %>%
+    left_join(starters, by=c('pos', 'pos_num')) %>%
+    arrange(pos)
+  
+  
+  bench <- setdiff(roster$player, lineup$player)
+  if(length(bench)>0){
+    lineup <- lineup %>%
+      rbind(tibble(
+        player = bench,
+        pos = 'BN',
+        pos_num = 1:length(bench)
+      ))
+  }
+  
+  lineup %>%
+    left_join({select(player_data, player, score) %>%
+        bind_rows(transmute(replacement_player_data, score=score, player = paste0('(', pos, ') Replacement')))}, by='player') %>%
+    filter(pos!='BN' | !grepl('Replacement', player))
+}
+
+prob_of_1 <- c(0.5, 0.75, 0.9)
+
+composite_probabilities <- function(prob_of_1){
+  perms <- permutations(2,length(prob_of_1),c(1, -1),repeats.allowed=TRUE) 
+  probs <- matrix(rep(prob_of_1, nrow(perms)), ncol=length(prob_of_1), byrow=T)
+  x <- probs * perms
+  x <- ifelse(x < 0, x + 1, x)
+  x_probs <- apply(x, 1, prod)
+  perms[perms==-1] <- 0
+  mat <- cbind(perms, x_probs)
+  colnames(mat) <- c(prob_of_1, 'prob')
+  mat
+}
+
+cbind(perms, x_probs)
+
+list_of_players <- c(
+  'Alex Bregman',   # 3B, SS
+  'Mike Trout',     # OF
+  'Anthony Rizzo',  # 1B
+  'Matt Carpenter', # 1B, 2B, 3B
+  'Chad Green',    # SP
+  'Joey Gallo',     # OF, 1B
+  'Ryan Zimmerman', # 1B
+  "Ryan O'Hearn"    # 1B
+)
+
+quick_roster_vor <- function(list_of_players){
+  roster <- vorp.rep[vorp.rep$player %in% list_of_players,]
+  
+  get_vor <- function(players){
+    play_probs <- roster[match(players, roster$player),]$GP / 162
+    if (length(play_probs) == 1  ){return(max(roster$vor[roster$player == players[1]]))}
+    
+    mat <- composite_probabilities(play_probs)
+    mat <- mat[sort(-mat[,'prob'], index.return=T)$ix,]
+    mat <- mat[1:(min(nrow(mat), 50)),]
+    mean_vor <- weighted.mean(apply(mat[,-ncol(mat)], 1, function(x)roster_vor(players[x==1])),w=mat[,'prob'])
+    mean_vor
+  }
+  
+  pitchers <- unique(roster[roster$pos == 'P','player'])$player
+  batters <- unique(roster[roster$pos == 'Util','player'])$player
+  
+  vor_score <- get_vor(batters) + get_vor(pitchers)
+}
+
+
+
+
+nrow(x)
+ncol(x)
+
+perms[perms==-1] <- 0
+
+by_row <- function(mat, fun){
+  apply(1:nrow(mat), function(i){fun(mat[i,])})
+}
+
+sum(apply(x, 1, prod))
+
+by_row(x, sum)
+
+library(gtools)
 
 
 
 
 
 
-male = c(177, 1985)
-female = c(231, 3567)
 
-M <- as.table(rbind(c(231, 3567), c(177, 1965)))
-dimnames(M) <- list(gender = c("F", "M"),
-                    opioid_abuse = c("Yes","No"))
-M
-
-(Xsq <- chisq.test(M, correct = F))
 

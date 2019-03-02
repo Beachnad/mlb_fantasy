@@ -57,6 +57,63 @@ my_roster <- c(
   "Ryan O'Hearn"    # 1B
 )
 
+composite_probabilities <- function(prob_of_1){
+  perms <- permutations(2,length(prob_of_1),c(1, -1),repeats.allowed=TRUE) 
+  probs <- matrix(rep(prob_of_1, nrow(perms)), ncol=length(prob_of_1), byrow=T)
+  x <- probs * perms
+  x <- ifelse(x < 0, x + 1, x)
+  x_probs <- apply(x, 1, prod)
+  perms[perms==-1] <- 0
+  mat <- cbind(perms, x_probs)
+  colnames(mat) <- c(prob_of_1, 'prob')
+  mat
+}
+
+opt_lineup_score <- function(players){
+  
+  roster <- filter(player_data.rep, player %in% players) %>%
+    separate_rows(pos, sep=',') %>%
+    left_join(select(vorp, player, pos, vor), by=c('player', 'pos')) %>%
+    group_by(pos) %>%
+    mutate(rank=dense_rank(desc(vor))) %>%
+    ungroup() %>%
+    select(player, vor, pos)
+  
+  
+  df <- roster %>%
+    mutate(
+      label = paste(player, pos, sep=' - '),
+      one=1
+    ) %>%
+    spread(key=pos, value=one, fill=0) %>%
+    add_columns(positions, 0) %>%
+    mutate(one=1) %>%
+    spread(key=player, value=one, fill=0)
+  
+  objective.in <- df$vor
+  
+  const.mat <- df %>%
+    select(-label, -vor) %>%
+    data.matrix() %>% t()
+  
+  const.rhs <- case_when(
+    grepl('Replacement', row.names(const.mat))~99,
+    row.names(const.mat)%in%c('1B', '2B', '3B', 'SS', 'C', 'Util')~1,
+    row.names(const.mat)=='RP'~2,
+    row.names(const.mat)%in%c('OF', 'SP')~3,
+    row.names(const.mat)=='P'~3,
+    T~1
+  )
+  
+  const.dir <- rep('<=', length(const.rhs))
+  
+  sol <- lp(direction = "max", 
+            objective.in, # maximize objective function
+            const.mat, const.dir, const.rhs,   # constraints
+            all.int=T)
+  return(sum(objective.in[sol$solution == 1]))
+}
+
 opt_lineup <- function(players, fill_replacements=T){
   if(fill_replacements){players <- c(players, replacement_roster)}
   
@@ -138,6 +195,32 @@ opt_lineup <- function(players, fill_replacements=T){
     filter(pos!='BN' | !grepl('Replacement', player))
 }
 
+get_vor <- function(players, roster_data){
+  if (length(players) == 0)return(0)
+  play_probs <- roster_data[match(players, roster_data$player),]$GP / 162
+  if (length(play_probs) == 1  ){return(max(roster_data$vor[roster_data$player == players[1]]))}
+  
+  mat <- composite_probabilities(play_probs)
+  mat <- mat[sort(-mat[,'prob'], index.return=T)$ix,]
+  mat <- mat[1:(min(nrow(mat), 50)),]
+  mean_vor <- weighted.mean(apply(mat[,-ncol(mat)], 1, function(x)opt_lineup_score(players[x==1])),w=mat[,'prob'])
+  mean_vor
+}
+
+roster_vor <- function(list_of_players){
+  roster <- vorp.rep[vorp.rep$player %in% list_of_players,]
+  
+  pitchers <- unique(roster[roster$pos == 'P','player'])$player
+  batters <- unique(roster[roster$pos == 'Util','player'])$player
+  
+  vor_score <- get_vor(batters, roster) + get_vor(pitchers, roster)
+  vor_score
+}
+list_of_players <- my_roster
+roster_vor(my_roster)
+
+
+
 opt <- opt_lineup(my_roster, T)
 opt_lineup(replacement_roster, F)
 
@@ -147,82 +230,74 @@ opt_lineup(replacement_roster, F)
 #' Given how many games are s player is expected to
 #' play in a mlb season, return an array of 1's and
 #' 0's indicating: 1 = playing, 0 = not playing.
-sim_schedule <- function(gp=162){
-  shift = sample(0:5, 1)
-  if (gp <= 60){play <- ceiling(seq(shift, 157 + shift, length.out = gp))}
-  else{play = ceiling(seq(1, 162, length.out = gp))}
-  
-  s <- rep(1, 187)
-  s[spaced_sample(1:187, 25, k=4)] <- 0
-  x <- rep(0, 187)
-  x[which(s==1)[play]] <- 1
-  x
-}
-
-sim_schedule(gp=60)
-
-sim_weeks <- function(n, gp){
-  sch <- sim_schedule(gp)
-  wks <- sapply(sample(10:155, n), function(x){sch[x:(x+6)]}) %>%
-    t()
-  wks
-}
-
-sim_weeks(100, 32)
-
-
-roster <- my_roster
-sim_score_weeks <- function(n=100, roster){
-  
-  players <- player_data.rep$player[player_data.rep$player %in% roster]
-  gps <- player_data.rep$GP[player_data.rep$player %in% roster]
-  
-  
-  sim_wks <- lapply(gps, function(x)array(sim_weeks(n, x)))
-  
-  scores = sapply(1:(7*n), function(dy){
-    playing <- sapply(1:length(players), function(i)sim_wks[[i]][dy])
-    active_players = players[playing==1]
-    opt <- opt_lineup(active_players, fill_replacements = F)
-    score <- sum(opt$score[opt$pos!='BN'], na.rm=T)
-  })
-  
-  mean(scores)
-}
-
-roster <- my_roster
-replace_missing_slots <- function(roster){
-  opt <- opt_lineup(roster, F)
-  filter(player_data.rep, player %in% players) %>%
-    separate_rows(pos, sep=',') %>%
-    group_by(pos)
-}
+# sim_schedule <- function(gp=162){
+#   shift = sample(0:5, 1)
+#   if (gp <= 60){play <- ceiling(seq(shift, 157 + shift, length.out = gp))}
+#   else{play = ceiling(seq(1, 162, length.out = gp))}
+#   
+#   s <- rep(1, 187)
+#   s[spaced_sample(1:187, 25, k=4)] <- 0
+#   x <- rep(0, 187)
+#   x[which(s==1)[play]] <- 1
+#   x
+# }
+# 
+# sim_schedule(gp=60)
+# 
+# sim_weeks <- function(n, gp){
+#   sch <- sim_schedule(gp)
+#   wks <- sapply(sample(10:155, n), function(x){sch[x:(x+6)]}) %>%
+#     t()
+#   wks
+# }
+# 
+# sim_weeks(100, 32)
+# 
+# 
+# roster <- my_roster
+# sim_score_weeks <- function(n=100, roster){
+#   
+#   players <- player_data.rep$player[player_data.rep$player %in% roster]
+#   gps <- player_data.rep$GP[player_data.rep$player %in% roster]
+#   
+#   
+#   sim_wks <- lapply(gps, function(x)array(sim_weeks(n, x)))
+#   
+#   scores = sapply(1:(7*n), function(dy){
+#     playing <- sapply(1:length(players), function(i)sim_wks[[i]][dy])
+#     active_players = players[playing==1]
+#     opt <- opt_lineup(active_players, fill_replacements = F)
+#     score <- sum(opt$score[opt$pos!='BN'], na.rm=T)
+#   })
+#   
+#   mean(scores)
+# }
+# 
+# roster <- my_roster
+# replace_missing_slots <- function(roster){
+#   opt <- opt_lineup(roster, F)
+#   filter(player_data.rep, player %in% players) %>%
+#     separate_rows(pos, sep=',') %>%
+#     group_by(pos)
+# }
 
 sim_score_weeks(n=20, my_roster)
 
-sim_added_value_of <- function(curr_roster, new_player, curr_roster_score=NULL){
-  if(!is.null(curr_roster_score)){curr_score <- curr_roster_score}
-  else{curr_score <- sim_score_weeks(n=20, curr_roster)}
-  
-  if(!grepl('P',player_data$pos[player_data$player == new_player])){
-    curr_roster <- c(curr_roster, replacement_roster)
-  }
-  
-  
-  eval_score <- sim_score_weeks(n=50, c(curr_roster, new_player))
-  
-  eval_score - curr_score
+sim_added_value_of <- function(curr_roster, new_player){
+  curr_score <- roster_vor(curr_roster)
+  new_score <- roster_vor(c(new_player, curr_roster))
+  new_score - curr_score
 }
 
 sim_score_weeks(n=100, c(my_roster, replacement_roster))  # 737.9651
 sim_score_weeks(n=100, c(my_roster))                      # 399.6822
 
+roster_vor(my_roster)
 
-
-sim_added_value_of(my_roster, 'Edwin Díaz', 737.9651)
-sim_added_value_of(my_roster, 'Jesús Aguilar',  737.9651)
-sim_added_value_of(my_roster, 'Charlie Blackmon', curr_roster_score = 1175.215)
-sim_added_value_of(my_roster, 'Khris Davis', curr_roster_score = 1175.215)
-sim_added_value_of(my_roster, 'Max Scherzer', 399.6822)
+sim_added_value_of(my_roster, 'Edwin Díaz')
+# sim_added_value_of(my_roster, 'Jesús Aguilar',  737.9651)
+# sim_added_value_of(my_roster, 'Charlie Blackmon', curr_roster_score = 1175.215)
+# sim_added_value_of(my_roster, 'Khris Davis', curr_roster_score = 1175.215)
+sim_added_value_of(my_roster, 'Max Scherzer')
 
 sim_score_weeks(n=20, my_roster)

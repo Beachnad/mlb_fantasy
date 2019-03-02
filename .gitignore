@@ -110,3 +110,4 @@ venv.bak/
 # R
 .Rhistory
 *.Rproj
+scratch.R
